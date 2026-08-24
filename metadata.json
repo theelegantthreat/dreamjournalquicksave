@@ -1,0 +1,8 @@
+{
+  "name": "Dream Journal Quick Save",
+  "description": "Multi-modal dream journal with voice recording, AI audio transcription, surrealist dream art generation in 1K/2K/4K, Jungian archetype psychological interpretations, and multi-turn symbol inquiry chat.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
