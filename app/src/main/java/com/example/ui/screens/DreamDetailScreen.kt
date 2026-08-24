@@ -285,8 +285,8 @@ fun DreamDetailScreen(
                 imagePrompt = dream.imagePrompt.ifBlank { interpretation.surrealistImagePrompt },
                 imageSize = dream.imageSize,
                 isGenerating = isRepaintingImage,
-                onRegenerate = { newSize, prompt ->
-                    viewModel.regenerateDreamImage(dream.id, prompt, newSize)
+                onRegenerate = { newSize, prompt, style, aspectRatio ->
+                    viewModel.regenerateDreamImage(dream.id, prompt, newSize, style, aspectRatio)
                 }
             )
 

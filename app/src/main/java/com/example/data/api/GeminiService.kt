@@ -304,13 +304,14 @@ object GeminiService {
     }
 
     /**
-     * Generates a surrealist dream artwork using gemini-3-pro-image-preview.
-     * Supports imageSize affordances: "1K", "2K", "4K" and aspect ratios: "1:1", "16:9", "4:3".
+     * Generates a surrealist dream artwork using Gemini image models (gemini-3.1-flash-image-preview, gemini-2.5-flash-image, or gemini-3-pro-image-preview).
+     * Supports imageSize affordances: "1K", "2K", "4K", aspect ratios: "1:1", "16:9", "4:3", and artistic style presets.
      */
     suspend fun generateSurrealistImage(
         prompt: String,
         imageSize: String = "1K", // "1K", "2K", "4K"
-        aspectRatio: String = "1:1"
+        aspectRatio: String = "1:1",
+        surrealistStyle: String = "Masterwork Surrealism"
     ): Result<GeneratedImageData> = withContext(Dispatchers.IO) {
         try {
             val apiKey = getApiKey()
@@ -318,98 +319,124 @@ object GeminiService {
                 return@withContext Result.failure(Exception("Gemini API key is not configured."))
             }
 
-            val enhancedPrompt = if (prompt.contains("surrealist", ignoreCase = true)) {
+            val styleModifier = when (surrealistStyle) {
+                "Dalí Metamorphic" -> "in the visionary style of Salvador Dalí with melting obsidian clocks, fluid geometric morphing, impossible vast horizons, and dreamlike soft forms"
+                "Magritte Paradox" -> "in the enigmatic surrealist style of René Magritte with impossible daytime skies over nighttime streets, suspended floating monolithic rocks, and poetic metaphysical stillness"
+                "Chirico Metaphysical" -> "in the metaphysical style of Giorgio de Chirico featuring deserted classical arcade plazas, stark elongated architectural shadows, enigmatic statues, and deep contemplative silence"
+                "Varo Alchemical" -> "in the mystical occult surrealist style of Remedios Varo with intricate alchemical towers, celestial mechanical apparatuses, luminous starlight, and ethereal spiritual figures"
+                "Carrington Mythic" -> "in the mythic surrealist style of Leonora Carrington with folkloric chimera beasts, mystical kitchen cauldrons, Celtic symbolism, and rich oneiric textures"
+                else -> "in the masterwork surrealist traditions of Salvador Dalí, René Magritte, and Remedios Varo with symbolic subconscious motifs, atmospheric ethereal lighting, and cinematic depth"
+            }
+
+            val enhancedPrompt = if (prompt.startsWith("Surrealist", ignoreCase = true) && prompt.contains(styleModifier)) {
                 prompt
             } else {
-                "Surrealist dream painting in the masterwork styles of Salvador Dali, Rene Magritte, and Remedios Varo: $prompt. Atmospheric dreamscape, ethereal lighting, symbolic subconscious imagery, cinematic depth, rich vibrant textures."
+                "Surrealist oil painting $styleModifier depicting the dream: $prompt. Highly detailed fine art, atmospheric chiaroscuro lighting, rich textural oil painting brushwork, oneiric mystery, museum quality."
             }
 
-            val requestJson = JSONObject().apply {
-                val contents = JSONArray().apply {
-                    val contentObj = JSONObject().apply {
-                        val parts = JSONArray().apply {
-                            put(JSONObject().apply {
-                                put("text", enhancedPrompt)
-                            })
-                        }
-                        put("parts", parts)
-                    }
-                    put(contentObj)
-                }
-                put("contents", contents)
-                put("generationConfig", JSONObject().apply {
-                    put("imageConfig", JSONObject().apply {
-                        put("aspectRatio", aspectRatio)
-                        put("imageSize", imageSize)
-                    })
-                    val modalities = JSONArray().apply {
-                        put("TEXT")
-                        put("IMAGE")
-                    }
-                    put("responseModalities", modalities)
-                })
-            }
-
-            // Strictly using mandated model gemini-3-pro-image-preview
-            val modelName = "gemini-3-pro-image-preview"
-            val url = "$BASE_URL$modelName:generateContent?key=$apiKey"
-
-            val request = Request.Builder()
-                .url(url)
-                .post(requestJson.toString().toRequestBody(jsonMediaType))
-                .build()
-
-            val response = client.newCall(request).execute()
-            val responseBody = response.body?.string() ?: ""
-
-            if (!response.isSuccessful) {
-                Log.e(TAG, "Image generation error: ${response.code} $responseBody")
-                return@withContext Result.failure(Exception("Image generation error (${response.code}): $responseBody"))
-            }
-
-            // Extract image data from candidates
-            val root = JSONObject(responseBody)
-            val candidates = root.optJSONArray("candidates")
-            if (candidates == null || candidates.length() == 0) {
-                return@withContext Result.failure(Exception("No image candidates returned from Gemini."))
-            }
-
-            val firstCandidate = candidates.getJSONObject(0)
-            val content = firstCandidate.optJSONObject("content")
-            val parts = content?.optJSONArray("parts")
-
-            var base64Data: String? = null
-            var mimeType = "image/jpeg"
-            var textDescription = ""
-
-            if (parts != null) {
-                for (i in 0 until parts.length()) {
-                    val part = parts.getJSONObject(i)
-                    if (part.has("inlineData")) {
-                        val inlineData = part.getJSONObject("inlineData")
-                        base64Data = inlineData.optString("data")
-                        mimeType = inlineData.optString("mimeType", "image/jpeg")
-                    } else if (part.has("text")) {
-                        textDescription += part.optString("text") + " "
-                    }
-                }
-            }
-
-            if (base64Data.isNullOrBlank()) {
-                return@withContext Result.failure(Exception("No image bytes found in response: $textDescription"))
-            }
-
-            Result.success(
-                GeneratedImageData(
-                    base64Data = base64Data,
-                    mimeType = mimeType,
-                    imageSize = imageSize,
-                    prompt = enhancedPrompt,
-                    description = textDescription.trim()
-                )
+            val candidateModels = listOf(
+                "gemini-3.1-flash-image-preview",
+                "gemini-2.5-flash-image",
+                "gemini-3-pro-image-preview"
             )
+
+            var lastError: Exception? = null
+
+            for (modelName in candidateModels) {
+                try {
+                    val requestJson = JSONObject().apply {
+                        val contents = JSONArray().apply {
+                            val contentObj = JSONObject().apply {
+                                val parts = JSONArray().apply {
+                                    put(JSONObject().apply {
+                                        put("text", enhancedPrompt)
+                                    })
+                                }
+                                put("parts", parts)
+                            }
+                            put(contentObj)
+                        }
+                        put("contents", contents)
+                        put("generationConfig", JSONObject().apply {
+                            put("imageConfig", JSONObject().apply {
+                                put("aspectRatio", aspectRatio)
+                                put("imageSize", imageSize)
+                            })
+                            val modalities = JSONArray().apply {
+                                put("TEXT")
+                                put("IMAGE")
+                            }
+                            put("responseModalities", modalities)
+                        })
+                    }
+
+                    val url = "$BASE_URL$modelName:generateContent?key=$apiKey"
+
+                    val request = Request.Builder()
+                        .url(url)
+                        .post(requestJson.toString().toRequestBody(jsonMediaType))
+                        .build()
+
+                    val response = client.newCall(request).execute()
+                    val responseBody = response.body?.string() ?: ""
+
+                    if (!response.isSuccessful) {
+                        Log.w(TAG, "Model $modelName returned ${response.code}: $responseBody. Trying next image model...")
+                        lastError = Exception("Model $modelName error (${response.code}): $responseBody")
+                        continue
+                    }
+
+                    val root = JSONObject(responseBody)
+                    val candidates = root.optJSONArray("candidates")
+                    if (candidates == null || candidates.length() == 0) {
+                        lastError = Exception("No candidates returned from $modelName.")
+                        continue
+                    }
+
+                    val firstCandidate = candidates.getJSONObject(0)
+                    val content = firstCandidate.optJSONObject("content")
+                    val parts = content?.optJSONArray("parts")
+
+                    var base64Data: String? = null
+                    var mimeType = "image/jpeg"
+                    var textDescription = ""
+
+                    if (parts != null) {
+                        for (i in 0 until parts.length()) {
+                            val part = parts.getJSONObject(i)
+                            if (part.has("inlineData")) {
+                                val inlineData = part.getJSONObject("inlineData")
+                                base64Data = inlineData.optString("data")
+                                mimeType = inlineData.optString("mimeType", "image/jpeg")
+                            } else if (part.has("text")) {
+                                textDescription += part.optString("text") + " "
+                            }
+                        }
+                    }
+
+                    if (!base64Data.isNullOrBlank()) {
+                        Log.i(TAG, "Successfully generated surrealist image with model $modelName")
+                        return@withContext Result.success(
+                            GeneratedImageData(
+                                base64Data = base64Data,
+                                mimeType = mimeType,
+                                imageSize = imageSize,
+                                prompt = enhancedPrompt,
+                                description = textDescription.trim()
+                            )
+                        )
+                    } else {
+                        lastError = Exception("No image bytes found in response from $modelName: $textDescription")
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error invoking model $modelName: ${e.message}")
+                    lastError = e
+                }
+            }
+
+            Result.failure(lastError ?: Exception("Surrealist image generation failed across all available image models."))
         } catch (e: Exception) {
-            Log.e(TAG, "Surrealist image generation failed", e)
+            Log.e(TAG, "Surrealist image generation fatal failure", e)
             Result.failure(e)
         }
     }

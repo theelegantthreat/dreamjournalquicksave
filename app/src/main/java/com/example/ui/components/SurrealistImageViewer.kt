@@ -19,21 +19,29 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -49,6 +57,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -79,13 +88,16 @@ fun SurrealistImageViewer(
     imagePrompt: String,
     imageSize: String, // "1K", "2K", "4K"
     isGenerating: Boolean,
-    onRegenerate: ((size: String, prompt: String) -> Unit)? = null,
+    onRegenerate: ((size: String, prompt: String, style: String, aspectRatio: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var showFullscreen by remember { mutableStateOf(false) }
     var showPromptDetails by remember { mutableStateOf(false) }
+    var showStudioDialog by remember { mutableStateOf(false) }
     var selectedSize by remember(imageSize) { mutableStateOf(imageSize) }
-    var showSizePicker by remember { mutableStateOf(false) }
+    var selectedStyle by remember { mutableStateOf("Masterwork Surrealism") }
+    var selectedAspectRatio by remember { mutableStateOf("1:1") }
+    var customPromptText by remember(imagePrompt) { mutableStateOf(imagePrompt) }
 
     val decodedBitmap = remember(imageUrl) {
         if (imageUrl != null && !imageUrl.startsWith("http")) {
@@ -141,7 +153,7 @@ fun SurrealistImageViewer(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Using gemini-3-pro-image-preview at $selectedSize resolution",
+                                text = "AI Dream Synthesis at $selectedSize ($selectedStyle)",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextLightMuted
                             )
@@ -204,7 +216,7 @@ fun SurrealistImageViewer(
                                 color = TextLight
                             )
                             Text(
-                                text = "Generate with gemini-3-pro in 1K, 2K, or 4K",
+                                text = "Generate with Gemini image models in 1K, 2K, or 4K",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextLightMuted
                             )
@@ -226,7 +238,7 @@ fun SurrealistImageViewer(
                             .clip(RoundedCornerShape(8.dp))
                             .background(Color(0x99000000))
                             .border(1.dp, Color(0x4DFFFFFF), RoundedCornerShape(8.dp))
-                            .clickable { showSizePicker = !showSizePicker }
+                            .clickable { showStudioDialog = true }
                             .padding(horizontal = 10.dp, vertical = 4.dp)
                     ) {
                         Text(
@@ -263,7 +275,7 @@ fun SurrealistImageViewer(
                     .background(SleekWhite)
                     .padding(14.dp)
             ) {
-                // Resolution Selector bar (1K, 2K, 4K)
+                // Resolution Selector bar & Studio trigger
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -293,6 +305,7 @@ fun SurrealistImageViewer(
                                     )
                                     .clickable {
                                         selectedSize = sizeOpt
+                                        onRegenerate?.invoke(sizeOpt, customPromptText.ifBlank { imagePrompt }, selectedStyle, selectedAspectRatio)
                                     }
                                     .padding(horizontal = 10.dp, vertical = 4.dp)
                             ) {
@@ -312,19 +325,20 @@ fun SurrealistImageViewer(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(SleekPrimaryContainer)
-                                .clickable { onRegenerate(selectedSize, imagePrompt) }
-                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                                .clickable { showStudioDialog = true }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                                .testTag("open_visual_studio_button"),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = "Regenerate",
+                                imageVector = Icons.Default.Palette,
+                                contentDescription = "Studio",
                                 tint = SleekPrimary,
                                 modifier = Modifier.size(15.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = if (imageUrl.isNullOrBlank()) "Generate Art" else "Repaint",
+                                text = if (imageUrl.isNullOrBlank()) "Generate" else "Visual Studio",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontWeight = FontWeight.Bold,
                                     color = SleekOnPrimaryContainer
@@ -372,6 +386,249 @@ fun SurrealistImageViewer(
                                 lineHeight = 17.sp
                             )
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // Surrealist Visual Studio Dialog (Custom Prompt, Style & Aspect Ratio)
+    if (showStudioDialog && onRegenerate != null) {
+        Dialog(
+            onDismissRequest = { showStudioDialog = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.92f)
+                    .clip(RoundedCornerShape(24.dp)),
+                color = SleekWhite
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(20.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                tint = SleekPrimary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Surrealist Vision Studio",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = TextPrimary
+                            )
+                        }
+
+                        IconButton(onClick = { showStudioDialog = false }) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = TextSecondary
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text(
+                        text = "Surrealist Aesthetic Movement",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = TextSecondary
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    val styles = listOf(
+                        "Masterwork Surrealism" to "Dali & Magritte Classic",
+                        "Dalí Metamorphic" to "Melting Clocks & Deserts",
+                        "Magritte Paradox" to "Impossible Day Skies",
+                        "Chirico Metaphysical" to "Arcades & Deep Shadows",
+                        "Varo Alchemical" to "Occult Towers & Starlight",
+                        "Carrington Mythic" to "Folkloric Chimeras"
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        styles.chunked(2).forEach { rowStyles ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                rowStyles.forEach { (styleKey, styleSub) ->
+                                    val isSelected = selectedStyle == styleKey
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(if (isSelected) SleekPrimary else SleekSurfaceVariant)
+                                            .border(
+                                                1.dp,
+                                                if (isSelected) SleekPrimary else SleekCardBorder,
+                                                RoundedCornerShape(10.dp)
+                                            )
+                                            .clickable { selectedStyle = styleKey }
+                                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = styleKey,
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                    fontSize = 11.sp
+                                                ),
+                                                color = if (isSelected) SleekWhite else TextPrimary
+                                            )
+                                            Text(
+                                                text = styleSub,
+                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                                color = if (isSelected) SleekLilac else TextSecondary
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Aspect Ratio & Resolution
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Aspect Ratio",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = TextSecondary
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf("1:1", "16:9", "4:3").forEach { ratio ->
+                                    val isSelected = selectedAspectRatio == ratio
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (isSelected) SleekPrimary else SleekSurfaceVariant)
+                                            .border(
+                                                1.dp,
+                                                if (isSelected) SleekPrimary else SleekCardBorder,
+                                                RoundedCornerShape(8.dp)
+                                            )
+                                            .clickable { selectedAspectRatio = ratio }
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = ratio,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                fontSize = 11.sp
+                                            ),
+                                            color = if (isSelected) SleekWhite else TextSecondary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Column {
+                            Text(
+                                text = "Resolution",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = TextSecondary
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf("1K", "2K", "4K").forEach { size ->
+                                    val isSelected = selectedSize == size
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (isSelected) SleekPrimaryContainer else SleekSurfaceVariant)
+                                            .border(
+                                                1.dp,
+                                                if (isSelected) SleekPrimary else SleekCardBorder,
+                                                RoundedCornerShape(8.dp)
+                                            )
+                                            .clickable { selectedSize = size }
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = size,
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                                                fontSize = 11.sp
+                                            ),
+                                            color = if (isSelected) SleekOnPrimaryContainer else TextSecondary
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Text(
+                        text = "Custom Dream Vision Prompt",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = TextSecondary
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    OutlinedTextField(
+                        value = customPromptText,
+                        onValueChange = { customPromptText = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(96.dp)
+                            .testTag("custom_image_prompt_input"),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = SleekPrimary,
+                            unfocusedBorderColor = SleekCardBorder,
+                            focusedContainerColor = SleekSurfaceVariant,
+                            unfocusedContainerColor = SleekSurfaceVariant
+                        ),
+                        textStyle = MaterialTheme.typography.bodySmall
+                    )
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    Button(
+                        onClick = {
+                            showStudioDialog = false
+                            val promptToUse = customPromptText.ifBlank { imagePrompt }
+                            onRegenerate(selectedSize, promptToUse, selectedStyle, selectedAspectRatio)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                            .testTag("generate_visual_submit_button"),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = SleekPrimary,
+                            contentColor = SleekWhite
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Paint Surrealist Artwork ($selectedSize)",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                        )
                     }
                 }
             }

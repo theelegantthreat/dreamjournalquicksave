@@ -114,6 +114,8 @@ class DreamViewModel @JvmOverloads constructor(
         transcript: String,
         imageSize: String, // "1K", "2K", "4K"
         wakingMood: String = "",
+        surrealistStyle: String = "Masterwork Surrealism",
+        aspectRatio: String = "1:1",
         onSuccess: (Long) -> Unit
     ) {
         viewModelScope.launch {
@@ -134,11 +136,13 @@ class DreamViewModel @JvmOverloads constructor(
                 corePsychologicalSynthesis = "This dream reflects an emergence from the unconscious mind, inviting deeper personal reflection."
             )
 
-            // Step 2: Surrealist Artwork Generation with gemini-3-pro-image-preview
-            _processingStep.value = "Painting surrealist dreamscape in $imageSize with Gemini 3 Pro..."
+            // Step 2: Surrealist Artwork Generation with Gemini Image Models
+            _processingStep.value = "Painting surrealist dreamscape in $imageSize ($surrealistStyle)..."
             val imageResult = GeminiService.generateSurrealistImage(
                 prompt = interpretation.surrealistImagePrompt,
-                imageSize = imageSize
+                imageSize = imageSize,
+                aspectRatio = aspectRatio,
+                surrealistStyle = surrealistStyle
             )
 
             val imageBase64 = imageResult.getOrNull()?.base64Data
@@ -182,12 +186,20 @@ class DreamViewModel @JvmOverloads constructor(
         }
     }
 
-    fun regenerateDreamImage(dreamId: Long, prompt: String, size: String) {
+    fun regenerateDreamImage(
+        dreamId: Long,
+        prompt: String,
+        size: String,
+        surrealistStyle: String = "Masterwork Surrealism",
+        aspectRatio: String = "1:1"
+    ) {
         viewModelScope.launch {
             _isRepaintingImage.value = true
             val result = GeminiService.generateSurrealistImage(
                 prompt = prompt,
-                imageSize = size
+                imageSize = size,
+                aspectRatio = aspectRatio,
+                surrealistStyle = surrealistStyle
             )
             _isRepaintingImage.value = false
 
